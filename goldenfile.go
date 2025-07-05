@@ -44,6 +44,10 @@ func (g *GoldenFile) filepath(t *testing.T, name string) string {
 func (g *GoldenFile) Read(t *testing.T, name string) []byte {
 	t.Helper()
 	filePath := g.filepath(t, name)
+	
+	// ファイル使用を追跡
+	TrackFileUsage(t, filePath)
+	
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		t.Fatal(err)
@@ -54,6 +58,9 @@ func (g *GoldenFile) Read(t *testing.T, name string) []byte {
 func (g *GoldenFile) Write(t *testing.T, name string, data []byte) {
 	t.Helper()
 	filePath := g.filepath(t, name)
+
+	// ファイル使用を追跡
+	TrackFileUsage(t, filePath)
 
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		t.Fatal(err)
