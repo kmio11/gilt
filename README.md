@@ -3,6 +3,8 @@ A library for performing Golden Tests in Go.
 
 - Read and update golden files
 - Use any assertion function
+- Automatically clean unused golden files
+- Customizable file handling with interfaces
 
 ## Basic Usage
 > [!TIP]
@@ -39,11 +41,18 @@ func TestNewStringGolden(t *testing.T) {
 }
 ```
 
-Updating the golden file:
+### Updating and managing golden files
 
 You can update the golden file by running the test with the `-update` flag.
 ```bash
 $ go test -update
+```
+
+You can also clean unused golden files with the `-clean` flag:
+```bash
+$ go test -clean              # Remove unused golden files
+$ go test -clean-dry-run      # Show what would be cleaned
+$ go test -clean-backup       # Clean with backup creation
 ```
 
 The following golden file will be generated:
@@ -127,6 +136,39 @@ You can use any assertion function you like.
 ```
 
 ## Advanced Usage
+
+### Automatic cleanup for table-driven tests
+
+For table-driven tests, enable cleanup at the test function level to avoid timing issues:
+
+```go
+func TestMyFeature(t *testing.T) {
+    golden := gilt.NewStringGolden("my-feature")
+    
+    // Setup cleanup at the test function level
+    gilt.SetupCleanup(t, golden, gilt.WithDryRun())
+    
+    testCases := []struct{
+        name string
+        input string
+    }{
+        {"case1", "test1"},
+        {"case2", "test2"},
+    }
+    
+    for _, tc := range testCases {
+        t.Run(tc.name, func(t *testing.T) {
+            golden.Assert(t, tc.input, tc.name, func(t *testing.T, actual, expected string) {
+                if actual != expected {
+                    t.Errorf("Expected %q, got %q", expected, actual)
+                }
+            })
+        })
+    }
+    // Cleanup happens once at the end of TestMyFeature
+}
+```
+
 ### Customizing the reading and updating of Golden files
 You can customize the reading and updating of Golden files by implementing the each of the following interfaces:
 
@@ -180,3 +222,46 @@ golden := gilt.New(
 ```
 
 Of course, you can also specify a function that you have implemented yourself.
+
+### Custom cleanup behavior
+
+You can customize cleanup behavior with options:
+
+```go
+func TestBasicCleanup(t *testing.T) {
+    golden := gilt.NewStringGolden("basic")
+    
+    // Setup cleanup - only activates if -clean flags are used
+    gilt.SetupCleanup(t, golden)
+    
+    // Your test logic here
+}
+
+func TestCustomCleanup(t *testing.T) {
+    golden := gilt.NewStringGolden("custom")
+    
+    // Custom cleanup options - forces cleanup to be enabled
+    gilt.SetupCleanup(t, golden,
+        gilt.WithDryRun(),                     // Show what would be cleaned
+        gilt.WithBackup(),                     // Create backups
+        gilt.WithPatterns("*.keep", "*.ref"),  // Exclude important files
+    )
+    
+    // Your test logic here
+}
+
+func TestEnvironmentBasedCleanup(t *testing.T) {
+    golden := gilt.NewStringGolden("env")
+    
+    // Different behavior based on environment
+    if os.Getenv("CI") == "true" {
+        // Aggressive cleanup in CI
+        gilt.SetupCleanup(t, golden, gilt.WithBackup())
+    } else {
+        // Safe cleanup in development
+        gilt.SetupCleanup(t, golden, gilt.WithDryRun())
+    }
+    
+    // Your test logic here
+}
+```
