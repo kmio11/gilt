@@ -5,10 +5,18 @@ import (
 	"testing"
 )
 
-var flagUpdate bool
+var (
+	flagUpdate      bool
+	flagClean       bool
+	flagCleanDryRun bool
+	flagCleanBackup bool
+)
 
 func init() {
 	flag.BoolVar(&flagUpdate, "update", false, "update golden files")
+	flag.BoolVar(&flagClean, "clean", false, "clean unused golden files")
+	flag.BoolVar(&flagCleanDryRun, "clean-dry-run", false, "show what would be cleaned without actually deleting files")
+	flag.BoolVar(&flagCleanBackup, "clean-backup", false, "create backups when cleaning files")
 }
 
 // isUpdateFunc is a function variable that determines whether an update should be performed.

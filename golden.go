@@ -1,7 +1,6 @@
 package gilt
 
 import (
-	"fmt"
 	"os"
 	"testing"
 )
@@ -47,13 +46,11 @@ type Loader[TExpected any] interface {
 
 // Golden orchestrates golden file testing with generic types for actual and expected values.
 type Golden[TActual, TExpected any] struct {
-	updater     IsUpdater
-	saver       Saver[TActual]
-	loader      Loader[TExpected]
-	goldenFile  ReadWriter
-	namespace   string
-	autoClean   *CleanOptions
-	cleanOnExit bool
+	updater    IsUpdater
+	saver      Saver[TActual]
+	loader     Loader[TExpected]
+	goldenFile ReadWriter
+	namespace  string
 }
 
 // Option configures a Golden instance with functional options pattern.
@@ -75,6 +72,7 @@ func New[TActual any, TExpected any](
 	for _, opt := range opts {
 		opt(g)
 	}
+
 	return g
 }
 
@@ -87,15 +85,8 @@ func (g *Golden[TActual, TExpected]) Assert(
 ) {
 	t.Helper()
 
-	// Set up auto-clean if enabled and not already configured
-	if g.autoClean != nil && !g.cleanOnExit {
-		g.cleanOnExit = true
-		t.Cleanup(func() {
-			if goldenFile, ok := g.goldenFile.(*GoldenFile); ok {
-				CleanUnusedGoldenFiles(goldenFile, t, g.namespace, *g.autoClean)
-			}
-		})
-	}
+	// Note: Auto-cleanup is NOT performed in Assert to avoid issues with table-driven tests.
+	// Use gilt.SetupCleanup(t, golden) at the test function level for cleanup configuration.
 
 	if g.updater.IsUpdate(t, name) {
 		g.saver.Save(t, actual, name, g.goldenFile)
@@ -170,25 +161,76 @@ func WithLoader[TActual, TExpected any](loader Loader[TExpected]) Option[TActual
 	}
 }
 
-// CleanUnusedFiles removes unused golden files based on the provided options.
-func (g *Golden[TActual, TExpected]) CleanUnusedFiles(t *testing.T, options CleanOptions) CleanResult {
-	t.Helper()
-	if goldenFile, ok := g.goldenFile.(*GoldenFile); ok {
-		return CleanUnusedGoldenFiles(goldenFile, t, g.namespace, options)
-	}
-	return CleanResult{
-		Error: fmt.Errorf("goldenFile does not support cleaning"),
-	}
-}
-
 // GetGoldenFile returns the underlying ReadWriter used by this Golden instance.
 func (g *Golden[TActual, TExpected]) GetGoldenFile() ReadWriter {
 	return g.goldenFile
 }
 
-// WithAutoClean configures a Golden instance to automatically clean unused files at test completion.
-func WithAutoClean[TActual, TExpected any](options CleanOptions) Option[TActual, TExpected] {
-	return func(g *Golden[TActual, TExpected]) {
-		g.autoClean = &options
+// CleanupOption configures cleanup behavior.
+type CleanupOption func(*CleanOptions)
+
+// WithBackup enables backup creation during cleanup.
+func WithBackup() CleanupOption {
+	return func(opts *CleanOptions) {
+		opts.Backup = true
 	}
+}
+
+// WithDryRun enables dry-run mode (show what would be cleaned without deleting).
+func WithDryRun() CleanupOption {
+	return func(opts *CleanOptions) {
+		opts.DryRun = true
+	}
+}
+
+// WithPatterns sets file patterns to exclude from cleanup.
+func WithPatterns(patterns ...string) CleanupOption {
+	return func(opts *CleanOptions) {
+		opts.Patterns = patterns
+	}
+}
+
+// SetupCleanup configures cleanup for a Golden instance at test completion.
+// This should be called at the test function level, not in subtests, to avoid cleanup timing issues.
+//
+// Cleanup behavior:
+//   - If command line flags (-clean, -clean-dry-run) are set, those settings are used
+//   - If custom options are provided, cleanup is enabled with those options
+//   - If neither flags nor options are provided, no cleanup is performed
+//
+// Usage:
+//
+//	gilt.SetupCleanup(t, golden)                              // Only cleanup if -clean flags are used
+//	gilt.SetupCleanup(t, golden, gilt.WithBackup())           // Force enable with backup
+//	gilt.SetupCleanup(t, golden, gilt.WithDryRun())           // Force enable with dry-run
+//	gilt.SetupCleanup(t, golden, gilt.WithPatterns("*.keep")) // Force enable with exclusions
+func SetupCleanup[TActual, TExpected any](t *testing.T, g *Golden[TActual, TExpected], opts ...CleanupOption) {
+	t.Helper()
+
+	// Start with command line flags or defaults
+	var options *CleanOptions
+	if flagClean || flagCleanDryRun {
+		options = &CleanOptions{
+			DryRun: flagCleanDryRun,
+			Backup: flagCleanBackup,
+		}
+	} else if len(opts) > 0 {
+		// Only enable if custom options are provided
+		options = &CleanOptions{}
+	} else {
+		// No cleanup if no flags and no custom options
+		return
+	}
+
+	// Apply custom options
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	// Register cleanup
+	t.Cleanup(func() {
+		if goldenFile, ok := g.goldenFile.(*GoldenFile); ok {
+			CleanUnusedGoldenFiles(goldenFile, t, g.namespace, *options)
+		}
+	})
 }

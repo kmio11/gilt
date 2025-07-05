@@ -35,15 +35,8 @@ func CleanUnusedGoldenFiles(goldenFile *GoldenFile, t *testing.T, namespace stri
 		LogMessages:      []string{},
 	}
 
-	// Check if goldenFile implements Lister interface
-	lister, ok := interface{}(goldenFile).(Lister)
-	if !ok {
-		result.Error = fmt.Errorf("goldenFile does not implement Lister interface")
-		return result
-	}
-
 	// Get all files
-	allFiles := lister.ListFiles(t, namespace)
+	allFiles := goldenFile.ListFiles(t, namespace)
 
 	// Get unused files
 	unusedFiles := goldenFile.GetUnusedFiles(t, namespace)
