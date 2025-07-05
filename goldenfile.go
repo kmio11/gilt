@@ -10,6 +10,7 @@ import (
 var _ interface {
 	ReadWriter
 	Opener
+	Lister
 } = (*GoldenFile)(nil)
 
 type GoldenFile struct {
@@ -72,6 +73,32 @@ func (g *GoldenFile) Open(t *testing.T, name string) *os.File {
 		t.Fatal(err)
 	}
 	return f
+}
+
+func (g *GoldenFile) ListFiles(t *testing.T, namespace string) []string {
+	t.Helper()
+	
+	// namespaceディレクトリのパスを構築
+	goldenDir := filepath.Join("testdata", namespace, "golden")
+	
+	// パターンを構築（すべてのファイルを取得）
+	pattern := filepath.Join(goldenDir, "*")
+	
+	// ファイル一覧を取得
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		t.Fatalf("failed to list files: %v", err)
+	}
+	
+	// ディレクトリは除外してファイルのみを返す
+	var result []string
+	for _, file := range files {
+		if info, err := os.Stat(file); err == nil && !info.IsDir() {
+			result = append(result, file)
+		}
+	}
+	
+	return result
 }
 
 func GoldenFileWithPathHandler(f func(t *testing.T, namespace string, name string) string) GoldenFileOption {

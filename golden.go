@@ -19,6 +19,9 @@ type (
 	Opener interface {
 		Open(t *testing.T, name string) *os.File
 	}
+	Lister interface {
+		ListFiles(t *testing.T, namespace string) []string
+	}
 )
 
 type IsUpdater interface {
